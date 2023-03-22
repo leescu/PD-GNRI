@@ -1,0 +1,283 @@
+setwd("")
+library(foreign)
+library(dplyr)
+#====================periodontal_data_record====================================
+#periodontal_data
+OHXPER_9900<-read.xport("OHXPERIO.XPT")
+OHXPERL_0102<-read.xport("OHXPRL_B.XPT")
+OHXPERU_0102<-read.xport("OHXPRU_B.XPT")
+OHXPERL_0304<-read.xport("OHXPRL_C.XPT")
+OHXPERU_0304<-read.xport("OHXPRU_C.XPT")
+OHXPER_0102<-merge(OHXPERU_0102,OHXPERL_0102[,-which(names(OHXPERU_0102)%in%c("OHAEXSTS","OHASCST4"))],by = "SEQN",all=T)
+OHXPER_0304<-merge(OHXPERU_0304,OHXPERL_0304[,-which(names(OHXPERU_0304)%in%c("OHAEXSTS","OHASCST4"))],by = "SEQN",all=T)
+#Periodontal examination integrity and patient number
+myvars<-c("SEQN","OHASCST4")
+PDdata_9900<-OHXPER_9900[myvars]
+PDdata_0102<-OHXPER_0102[myvars]
+PDdata_0304<-OHXPER_0304[myvars]
+#All patients with complete periodontal examination were combined
+PDdata_9904<-rbind(PDdata_9900,PDdata_0102,PDdata_0304)
+#Check for duplicate patients
+indicator<-duplicated(PDdata_9904)
+table(PDdata_9904[indicator])
+#Only records  with complete periodontal data were selected
+PDdata.Complete<-filter(PDdata_9904,OHASCST4 == 1)
+#Complete periodontal records of the patient's periodontal examination results
+colnames(OHXPER_9900)<-sub('PCM','PCD',colnames(OHXPER_9900),fixed = F)
+colnames(OHXPER_9900)<-sub('LAM','LAD',colnames(OHXPER_9900),fixed = F)
+drop<-c("OHXURGIN","OHXULGIN","OHXLLGIN","OHXLRGIN")
+colnames<-setdiff(colnames(OHXPER_9900),c("OHXURGIN","OHXULGIN","OHXLLGIN","OHXLRGIN"))
+colnames<-na.omit(sub('OHD..CJ.',NA,colnames,fixed = F))
+colnames
+OHXPER_9904<-rbind(OHXPER_9900[,colnames],OHXPER_0102[,colnames],OHXPER_0304[,colnames])
+OHXPER.Complete<-filter(OHXPER_9904,OHASCST4 == 1)
+OHXPER<- OHXPER.Complete[,-which(names(OHXPERU_0304)%in%c("OHAEXSTS","OHASCST4"))]
+rownames(OHXPER)<-OHXPER$SEQN
+colnames<-colnames(OHXPER)
+colnames
+
+#Filter pocket depth data
+pocket_depth <- grep('OHD..PC.', colnames, value = T)
+PPD<-OHXPER[,pocket_depth]
+#Filter CAL data
+CAL<-grep('OHD..LA.', colnames, value = T)
+CAL<-OHXPER[,CAL]
+record<-ls()
+rm(list=record[which(record!='PPD'& record!='CAL') ])
+
+CAL_99<-CAL
+CAL_99[CAL_99!=99]<-0
+CAL_99[CAL_99==99]<-1
+colnames<-colnames(CAL_99)
+#Sum the points equal to 99 in each tooth position. If it is greater than 1,
+#it indicates that there are points that cannot be measured
+CAL99<-t(CAL_99)
+#Group according to tooth position (extract the number of tooth position)
+tooth<-colnames(CAL)
+toothnumber<-substr(tooth,4,5)
+#Sum according to tooth position
+CAL_TOOTH_99<-rowsum(CAL99, toothnumber,na.rm = F)
+#According to the tooth position, the teeth with missing data
+#are recorded as 1 and those without are recorded as 0
+CAL_TOOTH_99[CAL_TOOTH_99<2]<-0
+CAL_TOOTH_99[CAL_TOOTH_99==2]<-1
+CALTOOTH_99<-t(CAL_TOOTH_99)
+#Sum the number of missing teeth in each record
+CAL_99number<-rowSums(CALTOOTH_99,na.rm = T)
+CAL_99number<-data.frame(CAL_99number)
+#Merge the missing teeth data into the summary table
+tooth_count<-data.frame(rownames(CAL_99number),CAL_99number)
+colnames(tooth_count)<-c("SEQN","tooth_count")
+
+#=========================Cal=6=================================================
+#Set the point with CAL>=6-> 1 and the point CAL<6->0
+CAL[CAL==99]<-NA
+CAL_6<-CAL
+CAL_6[CAL_6<6]<-0
+CAL_6[CAL_6>=6]<-1
+colnames<-colnames(CAL_6)
+tooth<-colnames(CAL)
+toothnumber<-substr(tooth,4,5)
+#Sum the sites of each tooth position CAL>=6. 
+#If it is greater than 1, there are point CAL>=6
+CAL6<-t(CAL_6)
+CAL_TOOTH6<-rowsum(CAL6, toothnumber,na.rm = F)
+#According to the tooth position, the teeth with CAL>=6 are recorded as 1 
+#and those without CAL>=6 are recorded as 0
+CAL_TOOTH6[CAL_TOOTH6<1]<-0
+CAL_TOOTH6[CAL_TOOTH6>=1]<-1
+CAL_TOOTH61<-as.data.frame(t(CAL_TOOTH6))
+#For teeth with CAL>=6, if it is greater than 2, 
+#there are more than 2 teeth with CAL>=6
+CAL_6number<-rowSums(CAL_TOOTH61,na.rm = T)
+CAL_6number<-data.frame(CAL_6number)
+CAL_6number$SEQN<-rownames(CAL_6number)
+#=========================Cal=4========================================
+#Set the point with CAL>=4-> 1 and the point CAL<4->0
+CAL_4<-CAL
+CAL_4[CAL_4<4]<-0
+CAL_4[CAL_4>=4]<-1
+colnames<-colnames(CAL_4)
+#Sum the sites of each tooth position CAL>=4. 
+#If it is greater than 1, there are point CAL>=4
+CAL4<-t(CAL_4)
+CAL_TOOTH4<-rowsum(CAL4, toothnumber,na.rm = F)
+#According to the tooth position, the teeth with CAL>=4are recorded as 1 
+#and those without CAL>=4 are recorded as 0
+CAL_TOOTH4[CAL_TOOTH4<1]<-0
+CAL_TOOTH4[CAL_TOOTH4>=1]<-1
+CAL_TOOTH41<-t(CAL_TOOTH4)
+#For teeth with CAL>=4, if it is greater than 2, 
+#there are more than 2 teeth with CAL>=4
+CAL_4number<-rowSums(CAL_TOOTH41,na.rm = T)
+CAL_4number<-data.frame(CAL_4number)
+CAL_4number$SEQN<-rownames(CAL_4number)
+#Merge the CAL>=4 data into the summary table
+OHXPER.CAL_46<-merge(CAL_6number,CAL_4number,by="SEQN",all = T)
+#=========================Cal=3=================================================
+#Set the point with CAL>=3-> 1 and the point CAL<3->0
+CAL_3<-CAL
+CAL_3[CAL_3<3]<-0
+CAL_3[CAL_3>=3]<-1
+colnames<-colnames(CAL_3)
+#Sum the sites of each tooth position CAL>=3. 
+#If it is greater than 1, there are point CAL>=3
+CAL3<-t(CAL_3)
+CAL_TOOTH3<-rowsum(CAL3, toothnumber,na.rm = F)
+#According to the tooth position, the teeth with CAL>=3are recorded as 1 
+#and those without CAL>=3 are recorded as 0
+CAL_TOOTH3[CAL_TOOTH3<1]<-0
+CAL_TOOTH3[CAL_TOOTH3>=1]<-1
+CAL_TOOTH31<-t(CAL_TOOTH3)
+#For teeth with CAL>=3, if it is greater than 2, 
+#there are more than 2 teeth with CAL>=3
+CAL_3number<-rowSums(CAL_TOOTH31,na.rm = T)
+CAL_3number<-data.frame(CAL_3number)
+CAL_3number$SEQN<-rownames(CAL_3number)
+#Merge the CAL>=3 data into the summary table
+OHXPER.CAL_346<-merge(OHXPER.CAL_46,CAL_3number,by="SEQN",all = T)
+
+#=========================PPD=5=================================================
+PPD[PPD==99]<-NA
+PPD_5<-PPD
+#Set the point with ppd>=5-> 1 and the point ppd<5->0
+PPD_5[PPD_5<5]<-0
+PPD_5[PPD_5>=5]<-1
+colnames<-colnames(PPD_5)
+#Sum the sites of each tooth position ppd>=5. 
+#If it is greater than 1, there are point ppd>=5
+tooth_PPD<-colnames(PPD)
+toothnumber_PPD<-substr(tooth_PPD,4,5)
+PPD51<-t(PPD_5)
+PPD_TOOTH5<-rowsum(PPD51, toothnumber_PPD,na.rm = F)
+#According to the tooth position, the teeth with PPD>=5are recorded as 1 
+#and those without PPD>=5 are recorded as 0
+PPD_TOOTH5[PPD_TOOTH5<1]<-0
+PPD_TOOTH5[PPD_TOOTH5>=1]<-1
+PPD_TOOTH51<-t(PPD_TOOTH5)
+#For teeth with PPD>=5, if it is greater than 2, 
+#there are more than 2 teeth with PPD>=5
+PPD_5number<-rowSums(PPD_TOOTH51,na.rm = T)
+PPD_5number<-data.frame(PPD_5number)
+#Merge the PPD>=5 data into the summary table
+PPD_5number$SEQN<-rownames(PPD_5number)
+OHXPER.CAL_346.PPD_5<-merge(OHXPER.CAL_346,PPD_5number,by="SEQN",all = T)
+#=========================PPD=3=================================================
+#Set the point with ppd>=4-> 1 and the point ppd<4->0
+PPD_4<-PPD
+PPD_4[PPD_4<4]<-0
+PPD_4[PPD_4>=4]<-1
+#Sum the sites of each tooth position ppd>=4. 
+#If it is greater than 1, there are point ppd>=4
+PPD41<-t(PPD_4)
+PPD_TOOTH4<-rowsum(PPD41, toothnumber_PPD,na.rm = F)
+#According to the tooth position, the teeth with PPD>=4are recorded as 1 
+#and those without PPD>=4 are recorded as 0
+PPD_TOOTH4[PPD_TOOTH4<1]<-0
+PPD_TOOTH4[PPD_TOOTH4>=1]<-1
+PPD_TOOTH41<-t(PPD_TOOTH4)
+#For teeth with PPD>=4, if it is greater than 2, 
+#there are more than 2 teeth with PPD>=4
+PPD_4number<-rowSums(PPD_TOOTH41,na.rm = T)
+PPD_4number<-data.frame(PPD_4number)
+#Merge the PPD>=4 data into the summary table
+PPD_4number$SEQN<-rownames(PPD_4number)
+CAL_346.PPD_45<-merge(OHXPER.CAL_346.PPD_5,PPD_4number,by="SEQN",all = T)
+OXPER.ALL<-merge(CAL_346.PPD_45,tooth_count,by="SEQN",all=T)
+record<-ls()
+rm(list=record[which(record!='OXPER.ALL')])
+
+
+#TOOTHLOSS
+library(nhanesR)
+tsv99_04<-nhs_tsv('ohxden',years =c(1999:2000,2003:2004)) 
+tsv0102<-nhs_tsv('ohxden',years =c(2001:2002)) 
+nhs_brief(tsv99_04)
+rownames.t<-grep('ohx..tc', rownames(nhs_brief(tsv99_04)), value = T)
+rownames.t<-c("seqn",rownames.t)
+rownames<-setdiff(rownames.t,c("ohx01tc","ohx16tc","ohx17tc","ohx32tc"))
+data99_04<-nhs_read(tsv99_04)
+data0102<-nhs_read(tsv0102)
+colnames(data0102)<-sub('ohd','ohx',colnames(data0102),fixed = F)
+data99_04<-data99_04[,rownames]
+data0102<-data0102[,rownames]
+data<-rbind(data0102,data99_04)
+data<-data[order(data$seqn),]
+rownames(data)<-data$seqn
+Sums<-as.data.frame(rowSums(data=="Not present"))
+colnames(Sums)<-"toothloss"
+Sums$SEQN<-rownames(Sums)
+OXPER.PD<-merge(OXPER.ALL,Sums,by = "SEQN",all.x = T)
+save(OXPER.PD,file="./PD_alldata.Rdata")
+#====================Start diagnosis of periodontal disease=====================
+#according to DOI: 10.1111/prd.12323
+#Recent epidemiologic trends in periodontitis in the USA
+#Periodontology 2000. 2020;82:257?C267. 
+#====================Periodontal disease and normal=============================
+#Patients with edentulous jaws and patients with only one tooth were deleted
+OXPER.PD$tooth_count[OXPER.PD$tooth_count==14]<-NA
+OXPER.PD<-na.omit(OXPER.PD)
+#Meet the minimum standards for periodontal disease
+OXPER.PD$diagnosis_PD[(OXPER.PD$CAL_3number>=1&OXPER.PD$PPD_5number>=1)|
+                        OXPER.PD$CAL_3number>=1&OXPER.PD$PPD_4number>=1|
+                        OXPER.PD$PPD_5number>=1|
+                        OXPER.PD$CAL_4number>=1]<-"periodontitis"
+OXPER.PD$diagnosis_PD[is.na(OXPER.PD$diagnosis_PD)] <-"normal"
+PD<-OXPER.PD[,c("SEQN","diagnosis_PD")]
+table(PD$diagnosis_PD)
+save(PD,file="./PD_dia.Rdata")
+#====================Graded periodontal disease and normal======================
+#severe periodontitis 
+OXPER.ALL$severe[OXPER.ALL$CAL_6number>=1&OXPER.ALL$PPD_5number>=1]<-"severe"
+table(OXPER.ALL$severe)
+OXPER.ALL$severe[is.na(OXPER.ALL$severe)] <-"no severe"
+#moderate periodontitis
+OXPER.ALL$moderate[OXPER.ALL$CAL_4number>=1|OXPER.ALL$PPD_5number>=1]<-"moderate"
+OXPER.ALL$moderate[is.na(OXPER.ALL$moderate)] <-"no moderate"
+#mild periodontitis
+OXPER.ALL$mild[OXPER.ALL$CAL_3number>=1&OXPER.ALL$PPD_4number>=1]<-"mild"
+OXPER.ALL$mild[is.na(OXPER.ALL$mild)] <-"no Mild"
+#only severe
+OXPER.ALL$diagnosis[OXPER.ALL$severe=="severe"]<-"severe"
+#moderat not severe
+OXPER.ALL$diagnosis[OXPER.ALL$moderate=="moderate"& OXPER.ALL$severe=="no severe"]<-"moderate"
+#Mild not moderate
+OXPER.ALL$diagnosis[OXPER.ALL$moderate=="no moderate"& OXPER.ALL$mild=="mild"]<-"mild"
+#normal
+OXPER.ALL$diagnosis[is.na(OXPER.ALL$diagnosis)] <-"normal"
+#?
+OXPER.diagnosis<-OXPER.ALL[c("SEQN","diagnosis")]
+table(OXPER.diagnosis$diagnosis)
+save(OXPER.diagnosis,file="./Graded_PD_dia&Edentulous.Rdata")
+table(OXPER.diagnosis)
+OXPER.diagnosis_only<-OXPER.diagnosis
+OXPER.diagnosis_only$diagnosis[OXPER.diagnosis_only$diagnosis=="edentulous"]<-NA
+table(OXPER.diagnosis_only$diagnosis)
+OXPER.diagnosis_only<-na.omit(OXPER.diagnosis_only)
+save(OXPER.diagnosis_only,file="./Graded_PD_dia.Rdata")
+PD_dia<-OXPER.ALL[,c("SEQN","PPD_5number","CAL_4number")]
+PD_dia$diagnosis[PD_dia$CAL_4number>=1|PD_dia$PPD_5number>=1]<-"Moderate/Severe periodontitis"
+PD_dia$diagnosis[PD_dia$CAL_4number<1&PD_dia$PPD_5number<1]<-"No/Mild periodontitis"
+save(PD_dia,file="./PD_dia.Rdata")
+record<-ls()
+rm(list=record[which(record!='PD_dia')])
+table(PD_dia$diagnosis)
+age<-db_demo(years = 1999:2004,ageyr=T)
+age$ageyr[age$ageyr<20]<-NA
+age<-na.omit(age[,c(1,4)])
+colnames(age)[1]<-"SEQN"
+PD_dia_20<-merge(PD_dia,age,by="SEQN",all = F)
+PD_dia_20$SEQN<-as.numeric(PD_dia_20$SEQN)
+PD_dia_20<-PD_dia_20[order(PD_dia_20$SEQN),]
+table(PD_dia_20$diagnosis)
+PD_CON<-PD_dia_20[,c("SEQN","diagnosis")]
+PD_CON$chort<-"NHANES_Cont"
+PD_CON$ID<-paste(PD_CON$chort,PD_CON$SEQN,sep="_")
+PD_CON<-PD_CON[,c("ID","SEQN","diagnosis")]
+colnames(PD_CON)[3]<-"Periodontitis"
+table()
+# cohort_PD_dia<-merge(NHANEIII,a,by="SEQN",all=F)
+# save(cohort_PD_dia,file="./cohort_PD_dia.Rdata")
+# PD_data<-merge(OXPER.ALL,PD_dia[,c(1,4)],by="SEQN",all=T)
+# save(PD_data,file="./PD_data.Rdata")
+
