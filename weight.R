@@ -1,0 +1,9 @@
+#weight
+exam=read.table("./data/NHANESIII/exam.dat",sep=",",fill=T)
+exam$SEQN<-as.numeric(substring(exam$V1,1,5))
+HEI_weight<-as.data.frame(exam$SEQN)
+colnames(HEI_weight)<-c("SEQN")
+HEI_weight$interview_weight<-as.numeric(substring(exam$V1,50,58))
+HEI_weight$MEC_weight<-as.numeric(substring(exam$V1,59,67))
+HEI_weight$M_H_weight<-as.numeric(substring(exam$V1,68,76))
+#
